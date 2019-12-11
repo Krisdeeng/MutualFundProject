@@ -7,7 +7,7 @@ Note 2: Some of the codes may be from the older versions. Any seemingly missing/
 Note 3: The codes represent a small part of the very lengthened research process, from one among many researches that I have conducted and participated in.
 
 # MutualFundProject
-Kris' own development of SAS, SQL and Macros in the research of Canadian mutual fund performance (1000+ funds, 1991-2016)
+Kris' own development of SAS, SQL and Macros programming in the research of Canadian mutual fund performance (1000+ funds, 1991-2016)
 
 # It has been a pleasure!
 Thank you very much for visiting.
