@@ -1,4 +1,5 @@
-# Welcome to the WorkSample folder of Kris Tran/Nhan Tran. 
+# Mutual Fund Performance Analysis
+## Welcome to the WorkSample folder of Kris Tran (Nhan Tran). 
 ### Declaration of purpose:
 I would like to use this folder to present a part of the coding work I have been doing in my statistical analysis research work from 2016-2019.
 
