@@ -1,5 +1,5 @@
 # Welcome to the WorkSample folder of Kris Tran/Nhan Tran. 
-# Declaration of purpose:
+Declaration of purpose:
 I would like to use this folder to present a part of the coding work I have been doing in my statistical analysis research work from 2016-2019.
 
 Note 1: Absolutely 100% of the codes here are hand-written by myself without any help.
