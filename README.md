@@ -2,7 +2,7 @@
 ## Welcome to the WorkSample folder of Kris Tran (Nhan Tran). 
 
 ## Introduction:
-Kris' own development of **SAS, SQL and Macros** programming in the research of Canadian mutual fund performance (1000+ funds, 1991-2016).
+Kris' own development of _**SAS, SQL and Macros**_ programming in the research of Canadian mutual fund performance (1000+ funds, 1991-2016).
 
 ### Declaration of purpose:
 I would like to use this folder to present a part of the coding work I have been doing in my statistical analysis research work from 2016-2019.
