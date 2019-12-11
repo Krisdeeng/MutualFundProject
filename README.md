@@ -20,4 +20,4 @@ If you have any questions or request of my collaboration, please feel free to co
 
 
 
-<img scr=https://drive.google.com/file/d/1ZHCTKITCgUzPk4JZy3HrYofYFqTq58a_/view?usp=sharing>
+<img scr=https://ibb.co/gWbMHsj>
