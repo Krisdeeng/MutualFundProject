@@ -1,0 +1,346 @@
+
+/*------------------------------------------------------------------------------
+
+                            FALSE DISCOVERY RATE METHOD 
+
+					  Part 3: Calculate Lambda and W(Lambda)
+
+							First run 5.3, 7.0,	8.1
+ 
+*-------------------------------------------------------------------------------*/
+
+
+* Start to Boot Prep ;
+* shut down results;
+ods graphics on;ods exclude none;ods results;
+options notes source source2 errors=20;
+proc printto;
+run;
+
+
+ods graphics off;ods exclude all;ods noresults;
+options nonotes nosource nosource2 errors=0;
+
+filename myfile 'D:\SAS\mylog.log';
+proc printto log=myfile;
+run;
+
+
+*--------------------------------------------------------------------------------------------;
+*                <<<    Calculating pi0(lambda)  for the population     >>>       			 ;
+*    				        		using Formula 5 (BSW09)						             ;
+*--------------------------------------------------------------------------------------------;
+
+* create base file (run ONCE after 1 %FDR);
+/*data FDR.G0;
+set Gbf_5f_05_060;
+if Y > 0 then delete;
+run;*/
+
+*reset base file;
+data G0_results;
+set FDR.G0;
+run;
+
+
+z
+
+%macro FDR(f=af,i=,m=5F,y=05,l=20);
+
+* Count the number of funds on the right of lambda (W);
+
+data G1;		
+set Pt&f.&i._&m._2;	
+do;
+if Pt > &l./100 then tickW = 1;
+else tickW = 0;
+end;
+run;
+proc sort data=G1;
+by tickW;
+run;
+
+data G1;
+set G1;
+by tickW;
+if first.tickW then countW = 0;
+countW + tickW;
+if last.tickW then output;
+run;
+
+data G1;
+set G1;
+if countW = 0 then delete;
+run;
+
+* Count the number of positively and negatively significant funds  based on t-value threshold;
+data G2;
+merge I&f.&i._&m._p(keep= fund m)  I&f.&i._&m._t;
+by Fund;
+
+DF = M - 1;
+t_thres = tinv((1-(&y./200)), M - 1);	
+do;
+if HCTValue >= t_thres then pSig = 1; 
+else pSig = 0;						
+if HCTValue < - t_thres then nSig = 1; 
+else nSig = 0;
+end;
+run;
+
+* Extract count Positive significant ;
+proc sort data=G2;  by pSig;  
+run;
+data G2_ps;
+set G2;
+by pSig;
+if first.pSig then countPSig=0;
+countPSig + pSig;
+if last.pSig then output;
+keep countPSig M;
+run;
+data G2_ps;
+set G2_ps;
+if countPSig = 0 then delete;
+run;
+
+* Extract count Negative significant ;
+proc sort data=G2;  by nSig;  
+run;
+data G2_ns;
+set G2;
+by nSig;
+if first.nSig then countNSig=0;
+countNSig + nSig;
+if last.nSig then output;
+keep countNSig M;
+run;
+
+data G2_ns;
+set G2_ns;
+if countNSig = 0 then delete;
+run;
+
+/*
+proc sort data = G2_ns; by CountNSig; 
+run;
+data G2_ns;
+set G2_ns;
+by CountNSig;
+if countNSig = 0 then delete;
+*if last.CountNSig;
+run;*/
+
+* CREATE THE <<< FINAL TABLE >>> ;
+
+data G&f.&i._&m._&y._0&l.;
+retain Group Return  Model Y Lambda CountW M Pi0 t_thres countPSig countNSig M0 MA W_test_0 R_Test_Sig F_false_sig A_false_0 N_true_0 T_true_sig False_pct SigP_pct SigN_Pct TrueP_pct TrueN_pct FDRp FDRn;
+merge G1(keep=countW) G2_ps G2_ns ;
+*if CountW = 0 then delete;
+Group = "&i.";
+if Group = '' then Group = 0;
+Return = "&f.";
+Model = "&m.";
+Lambda = &l./100;
+
+Pi0 = CountW/((1-Lambda)*M);
+Y = &y./100;
+
+DF = M - 1;
+t_thres = tinv((1-(&y./200)), DF);	
+
+False_pct = 0.5*Pi0*Y;
+SigP_pct = countPSig / M;
+SigN_Pct = countNSig / M;
+TrueP_pct = SigP_pct - False_pct;
+TrueN_pct = SigN_Pct - False_pct;
+FDRp = False_pct / SigP_pct;
+FDRn = False_pct / SigN_Pct;
+
+if CountNsig = '' then CountNsig = 0;
+if CountPsig = '' then CountPsig = 0;
+
+*Barras Table 1;
+R_Test_Sig = CountPsig + CountNsig;
+W_Test_0 = M - R_Test_Sig;
+
+M0 = int(M * Pi0);
+MA = M - M0;
+
+F_false_sig = M * Pi0 * Y;
+T_true_sig = R_test_sig - F_false_sig;
+N_true_0 = M0 - F_false_sig;
+A_false_0 = W_test_0 - N_true_0;
+
+if FDRp = '' then delete;
+run;
+%mend FDR;
+
+*    %FDR;
+
+ods graphics on;ods exclude none;ods results;
+options notes source source2 errors=20;
+proc printto;
+run;
+
+
+ods graphics off;ods exclude all;ods noresults;
+options nonotes nosource nosource2 errors=0;
+
+filename myfile 'D:\SAS\mylog.log';
+proc printto log=myfile;
+run;
+
+
+
+
+%macro lamloob(min=05,max=90);
+
+%local l;
+%do l = &min. %to &max. %by 2;
+
+%FDR(f=bf,i=,m=5F,y=05,l=&l.);%FDR(f=bf,i=,m=5F,y=10,l=&l.);%FDR(f=bf,i=,m=5F,y=15,l=&l.);%FDR(f=bf,i=,m=5F,y=20,l=&l.);%FDR(f=bf,i=,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=,m=4F,y=05,l=&l.);%FDR(f=bf,i=,m=4F,y=10,l=&l.);%FDR(f=bf,i=,m=4F,y=15,l=&l.);%FDR(f=bf,i=,m=4F,y=20,l=&l.);%FDR(f=bf,i=,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=,m=3F,y=05,l=&l.);%FDR(f=bf,i=,m=3F,y=10,l=&l.);%FDR(f=bf,i=,m=3F,y=15,l=&l.);%FDR(f=bf,i=,m=3F,y=20,l=&l.);%FDR(f=bf,i=,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=,m=1F,y=05,l=&l.);%FDR(f=bf,i=,m=1F,y=10,l=&l.);%FDR(f=bf,i=,m=1F,y=15,l=&l.);%FDR(f=bf,i=,m=1F,y=20,l=&l.);%FDR(f=bf,i=,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=,m=5F,y=05,l=&l.);%FDR(f=af,i=,m=5F,y=10,l=&l.);%FDR(f=af,i=,m=5F,y=15,l=&l.);%FDR(f=af,i=,m=5F,y=20,l=&l.);%FDR(f=af,i=,m=5F,y=25,l=&l.);
+%FDR(f=af,i=,m=4F,y=05,l=&l.);%FDR(f=af,i=,m=4F,y=10,l=&l.);%FDR(f=af,i=,m=4F,y=15,l=&l.);%FDR(f=af,i=,m=4F,y=20,l=&l.);%FDR(f=af,i=,m=4F,y=25,l=&l.);
+%FDR(f=af,i=,m=3F,y=05,l=&l.);%FDR(f=af,i=,m=3F,y=10,l=&l.);%FDR(f=af,i=,m=3F,y=15,l=&l.);%FDR(f=af,i=,m=3F,y=20,l=&l.);%FDR(f=af,i=,m=3F,y=25,l=&l.);
+%FDR(f=af,i=,m=1F,y=05,l=&l.);%FDR(f=af,i=,m=1F,y=10,l=&l.);%FDR(f=af,i=,m=1F,y=15,l=&l.);%FDR(f=af,i=,m=1F,y=20,l=&l.);%FDR(f=af,i=,m=1F,y=25,l=&l.);
+
+
+%FDR(f=bf,i=8,m=5F,y=05,l=&l.);%FDR(f=bf,i=8,m=5F,y=10,l=&l.);%FDR(f=bf,i=8,m=5F,y=15,l=&l.);%FDR(f=bf,i=8,m=5F,y=20,l=&l.);%FDR(f=bf,i=8,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=8,m=4F,y=05,l=&l.);%FDR(f=bf,i=8,m=4F,y=10,l=&l.);%FDR(f=bf,i=8,m=4F,y=15,l=&l.);%FDR(f=bf,i=8,m=4F,y=20,l=&l.);%FDR(f=bf,i=8,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=8,m=3F,y=05,l=&l.);%FDR(f=bf,i=8,m=3F,y=10,l=&l.);%FDR(f=bf,i=8,m=3F,y=15,l=&l.);%FDR(f=bf,i=8,m=3F,y=20,l=&l.);%FDR(f=bf,i=8,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=8,m=1F,y=05,l=&l.);%FDR(f=bf,i=8,m=1F,y=10,l=&l.);%FDR(f=bf,i=8,m=1F,y=15,l=&l.);%FDR(f=bf,i=8,m=1F,y=20,l=&l.);%FDR(f=bf,i=8,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=8,m=5F,y=05,l=&l.);%FDR(f=af,i=8,m=5F,y=10,l=&l.);%FDR(f=af,i=8,m=5F,y=15,l=&l.);%FDR(f=af,i=8,m=5F,y=20,l=&l.);%FDR(f=af,i=8,m=5F,y=25,l=&l.);
+%FDR(f=af,i=8,m=4F,y=05,l=&l.);%FDR(f=af,i=8,m=4F,y=10,l=&l.);%FDR(f=af,i=8,m=4F,y=15,l=&l.);%FDR(f=af,i=8,m=4F,y=20,l=&l.);%FDR(f=af,i=8,m=4F,y=25,l=&l.);
+%FDR(f=af,i=8,m=3F,y=05,l=&l.);%FDR(f=af,i=8,m=3F,y=10,l=&l.);%FDR(f=af,i=8,m=3F,y=15,l=&l.);%FDR(f=af,i=8,m=3F,y=20,l=&l.);%FDR(f=af,i=8,m=3F,y=25,l=&l.);
+%FDR(f=af,i=8,m=1F,y=05,l=&l.);%FDR(f=af,i=8,m=1F,y=10,l=&l.);%FDR(f=af,i=8,m=1F,y=15,l=&l.);%FDR(f=af,i=8,m=1F,y=20,l=&l.);%FDR(f=af,i=8,m=1F,y=25,l=&l.);
+
+
+%FDR(f=bf,i=9,m=5F,y=05,l=&l.);%FDR(f=bf,i=9,m=5F,y=10,l=&l.);%FDR(f=bf,i=9,m=5F,y=15,l=&l.);%FDR(f=bf,i=9,m=5F,y=20,l=&l.);%FDR(f=bf,i=9,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=9,m=4F,y=05,l=&l.);%FDR(f=bf,i=9,m=4F,y=10,l=&l.);%FDR(f=bf,i=9,m=4F,y=15,l=&l.);%FDR(f=bf,i=9,m=4F,y=20,l=&l.);%FDR(f=bf,i=9,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=9,m=3F,y=05,l=&l.);%FDR(f=bf,i=9,m=3F,y=10,l=&l.);%FDR(f=bf,i=9,m=3F,y=15,l=&l.);%FDR(f=bf,i=9,m=3F,y=20,l=&l.);%FDR(f=bf,i=9,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=9,m=1F,y=05,l=&l.);%FDR(f=bf,i=9,m=1F,y=10,l=&l.);%FDR(f=bf,i=9,m=1F,y=15,l=&l.);%FDR(f=bf,i=9,m=1F,y=20,l=&l.);%FDR(f=bf,i=9,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=9,m=5F,y=05,l=&l.);%FDR(f=af,i=9,m=5F,y=10,l=&l.);%FDR(f=af,i=9,m=5F,y=15,l=&l.);%FDR(f=af,i=9,m=5F,y=20,l=&l.);%FDR(f=af,i=9,m=5F,y=25,l=&l.);
+%FDR(f=af,i=9,m=4F,y=05,l=&l.);%FDR(f=af,i=9,m=4F,y=10,l=&l.);%FDR(f=af,i=9,m=4F,y=15,l=&l.);%FDR(f=af,i=9,m=4F,y=20,l=&l.);%FDR(f=af,i=9,m=4F,y=25,l=&l.);
+%FDR(f=af,i=9,m=3F,y=05,l=&l.);%FDR(f=af,i=9,m=3F,y=10,l=&l.);%FDR(f=af,i=9,m=3F,y=15,l=&l.);%FDR(f=af,i=9,m=3F,y=20,l=&l.);%FDR(f=af,i=9,m=3F,y=25,l=&l.);
+%FDR(f=af,i=9,m=1F,y=05,l=&l.);%FDR(f=af,i=9,m=1F,y=10,l=&l.);%FDR(f=af,i=9,m=1F,y=15,l=&l.);%FDR(f=af,i=9,m=1F,y=20,l=&l.);%FDR(f=af,i=9,m=1F,y=25,l=&l.);
+
+
+%FDR(f=bf,i=1,m=5F,y=05,l=&l.);%FDR(f=bf,i=1,m=5F,y=10,l=&l.);%FDR(f=bf,i=1,m=5F,y=15,l=&l.);%FDR(f=bf,i=1,m=5F,y=20,l=&l.);%FDR(f=bf,i=1,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=1,m=4F,y=05,l=&l.);%FDR(f=bf,i=1,m=4F,y=10,l=&l.);%FDR(f=bf,i=1,m=4F,y=15,l=&l.);%FDR(f=bf,i=1,m=4F,y=20,l=&l.);%FDR(f=bf,i=1,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=1,m=3F,y=05,l=&l.);%FDR(f=bf,i=1,m=3F,y=10,l=&l.);%FDR(f=bf,i=1,m=3F,y=15,l=&l.);%FDR(f=bf,i=1,m=3F,y=20,l=&l.);%FDR(f=bf,i=1,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=1,m=1F,y=05,l=&l.);%FDR(f=bf,i=1,m=1F,y=10,l=&l.);%FDR(f=bf,i=1,m=1F,y=15,l=&l.);%FDR(f=bf,i=1,m=1F,y=20,l=&l.);%FDR(f=bf,i=1,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=1,m=5F,y=05,l=&l.);%FDR(f=af,i=1,m=5F,y=10,l=&l.);%FDR(f=af,i=1,m=5F,y=15,l=&l.);%FDR(f=af,i=1,m=5F,y=20,l=&l.);%FDR(f=af,i=1,m=5F,y=25,l=&l.);
+%FDR(f=af,i=1,m=4F,y=05,l=&l.);%FDR(f=af,i=1,m=4F,y=10,l=&l.);%FDR(f=af,i=1,m=4F,y=15,l=&l.);%FDR(f=af,i=1,m=4F,y=20,l=&l.);%FDR(f=af,i=1,m=4F,y=25,l=&l.);
+%FDR(f=af,i=1,m=3F,y=05,l=&l.);%FDR(f=af,i=1,m=3F,y=10,l=&l.);%FDR(f=af,i=1,m=3F,y=15,l=&l.);%FDR(f=af,i=1,m=3F,y=20,l=&l.);%FDR(f=af,i=1,m=3F,y=25,l=&l.);
+%FDR(f=af,i=1,m=1F,y=05,l=&l.);%FDR(f=af,i=1,m=1F,y=10,l=&l.);%FDR(f=af,i=1,m=1F,y=15,l=&l.);%FDR(f=af,i=1,m=1F,y=20,l=&l.);%FDR(f=af,i=1,m=1F,y=25,l=&l.);
+
+
+%FDR(f=bf,i=2,m=5F,y=05,l=&l.);%FDR(f=bf,i=2,m=5F,y=10,l=&l.);%FDR(f=bf,i=2,m=5F,y=15,l=&l.);%FDR(f=bf,i=2,m=5F,y=20,l=&l.);%FDR(f=bf,i=2,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=2,m=4F,y=05,l=&l.);%FDR(f=bf,i=2,m=4F,y=10,l=&l.);%FDR(f=bf,i=2,m=4F,y=15,l=&l.);%FDR(f=bf,i=2,m=4F,y=20,l=&l.);%FDR(f=bf,i=2,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=2,m=3F,y=05,l=&l.);%FDR(f=bf,i=2,m=3F,y=10,l=&l.);%FDR(f=bf,i=2,m=3F,y=15,l=&l.);%FDR(f=bf,i=2,m=3F,y=20,l=&l.);%FDR(f=bf,i=2,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=2,m=1F,y=05,l=&l.);%FDR(f=bf,i=2,m=1F,y=10,l=&l.);%FDR(f=bf,i=2,m=1F,y=15,l=&l.);%FDR(f=bf,i=2,m=1F,y=20,l=&l.);%FDR(f=bf,i=2,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=2,m=5F,y=05,l=&l.);%FDR(f=af,i=2,m=5F,y=10,l=&l.);%FDR(f=af,i=2,m=5F,y=15,l=&l.);%FDR(f=af,i=2,m=5F,y=20,l=&l.);%FDR(f=af,i=2,m=5F,y=25,l=&l.);
+%FDR(f=af,i=2,m=4F,y=05,l=&l.);%FDR(f=af,i=2,m=4F,y=10,l=&l.);%FDR(f=af,i=2,m=4F,y=15,l=&l.);%FDR(f=af,i=2,m=4F,y=20,l=&l.);%FDR(f=af,i=2,m=4F,y=25,l=&l.);
+%FDR(f=af,i=2,m=3F,y=05,l=&l.);%FDR(f=af,i=2,m=3F,y=10,l=&l.);%FDR(f=af,i=2,m=3F,y=15,l=&l.);%FDR(f=af,i=2,m=3F,y=20,l=&l.);%FDR(f=af,i=2,m=3F,y=25,l=&l.);
+%FDR(f=af,i=2,m=1F,y=05,l=&l.);%FDR(f=af,i=2,m=1F,y=10,l=&l.);%FDR(f=af,i=2,m=1F,y=15,l=&l.);%FDR(f=af,i=2,m=1F,y=20,l=&l.);%FDR(f=af,i=2,m=1F,y=25,l=&l.);
+
+%FDR(f=bf,i=3,m=5F,y=05,l=&l.);%FDR(f=bf,i=3,m=5F,y=10,l=&l.);%FDR(f=bf,i=3,m=5F,y=15,l=&l.);%FDR(f=bf,i=3,m=5F,y=20,l=&l.);%FDR(f=bf,i=3,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=3,m=4F,y=05,l=&l.);%FDR(f=bf,i=3,m=4F,y=10,l=&l.);%FDR(f=bf,i=3,m=4F,y=15,l=&l.);%FDR(f=bf,i=3,m=4F,y=20,l=&l.);%FDR(f=bf,i=3,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=3,m=3F,y=05,l=&l.);%FDR(f=bf,i=3,m=3F,y=10,l=&l.);%FDR(f=bf,i=3,m=3F,y=15,l=&l.);%FDR(f=bf,i=3,m=3F,y=20,l=&l.);%FDR(f=bf,i=3,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=3,m=1F,y=05,l=&l.);%FDR(f=bf,i=3,m=1F,y=10,l=&l.);%FDR(f=bf,i=3,m=1F,y=15,l=&l.);%FDR(f=bf,i=3,m=1F,y=20,l=&l.);%FDR(f=bf,i=3,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=3,m=5F,y=05,l=&l.);%FDR(f=af,i=3,m=5F,y=10,l=&l.);%FDR(f=af,i=3,m=5F,y=15,l=&l.);%FDR(f=af,i=3,m=5F,y=20,l=&l.);%FDR(f=af,i=3,m=5F,y=25,l=&l.);
+%FDR(f=af,i=3,m=4F,y=05,l=&l.);%FDR(f=af,i=3,m=4F,y=10,l=&l.);%FDR(f=af,i=3,m=4F,y=15,l=&l.);%FDR(f=af,i=3,m=4F,y=20,l=&l.);%FDR(f=af,i=3,m=4F,y=25,l=&l.);
+%FDR(f=af,i=3,m=3F,y=05,l=&l.);%FDR(f=af,i=3,m=3F,y=10,l=&l.);%FDR(f=af,i=3,m=3F,y=15,l=&l.);%FDR(f=af,i=3,m=3F,y=20,l=&l.);%FDR(f=af,i=3,m=3F,y=25,l=&l.);
+%FDR(f=af,i=3,m=1F,y=05,l=&l.);%FDR(f=af,i=3,m=1F,y=10,l=&l.);%FDR(f=af,i=3,m=1F,y=15,l=&l.);%FDR(f=af,i=3,m=1F,y=20,l=&l.);%FDR(f=af,i=3,m=1F,y=25,l=&l.);
+
+%FDR(f=bf,i=4,m=5F,y=05,l=&l.);%FDR(f=bf,i=4,m=5F,y=10,l=&l.);%FDR(f=bf,i=4,m=5F,y=15,l=&l.);%FDR(f=bf,i=4,m=5F,y=20,l=&l.);%FDR(f=bf,i=4,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=4,m=4F,y=05,l=&l.);%FDR(f=bf,i=4,m=4F,y=10,l=&l.);%FDR(f=bf,i=4,m=4F,y=15,l=&l.);%FDR(f=bf,i=4,m=4F,y=20,l=&l.);%FDR(f=bf,i=4,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=4,m=3F,y=05,l=&l.);%FDR(f=bf,i=4,m=3F,y=10,l=&l.);%FDR(f=bf,i=4,m=3F,y=15,l=&l.);%FDR(f=bf,i=4,m=3F,y=20,l=&l.);%FDR(f=bf,i=4,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=4,m=1F,y=05,l=&l.);%FDR(f=bf,i=4,m=1F,y=10,l=&l.);%FDR(f=bf,i=4,m=1F,y=15,l=&l.);%FDR(f=bf,i=4,m=1F,y=20,l=&l.);%FDR(f=bf,i=4,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=4,m=5F,y=05,l=&l.);%FDR(f=af,i=4,m=5F,y=10,l=&l.);%FDR(f=af,i=4,m=5F,y=15,l=&l.);%FDR(f=af,i=4,m=5F,y=20,l=&l.);%FDR(f=af,i=4,m=5F,y=25,l=&l.);
+%FDR(f=af,i=4,m=4F,y=05,l=&l.);%FDR(f=af,i=4,m=4F,y=10,l=&l.);%FDR(f=af,i=4,m=4F,y=15,l=&l.);%FDR(f=af,i=4,m=4F,y=20,l=&l.);%FDR(f=af,i=4,m=4F,y=25,l=&l.);
+%FDR(f=af,i=4,m=3F,y=05,l=&l.);%FDR(f=af,i=4,m=3F,y=10,l=&l.);%FDR(f=af,i=4,m=3F,y=15,l=&l.);%FDR(f=af,i=4,m=3F,y=20,l=&l.);%FDR(f=af,i=4,m=3F,y=25,l=&l.);
+%FDR(f=af,i=4,m=1F,y=05,l=&l.);%FDR(f=af,i=4,m=1F,y=10,l=&l.);%FDR(f=af,i=4,m=1F,y=15,l=&l.);%FDR(f=af,i=4,m=1F,y=20,l=&l.);%FDR(f=af,i=4,m=1F,y=25,l=&l.);
+
+%FDR(f=bf,i=5,m=5F,y=05,l=&l.);%FDR(f=bf,i=5,m=5F,y=10,l=&l.);%FDR(f=bf,i=5,m=5F,y=15,l=&l.);%FDR(f=bf,i=5,m=5F,y=20,l=&l.);%FDR(f=bf,i=5,m=5F,y=25,l=&l.);
+%FDR(f=bf,i=5,m=4F,y=05,l=&l.);%FDR(f=bf,i=5,m=4F,y=10,l=&l.);%FDR(f=bf,i=5,m=4F,y=15,l=&l.);%FDR(f=bf,i=5,m=4F,y=20,l=&l.);%FDR(f=bf,i=5,m=4F,y=25,l=&l.);
+%FDR(f=bf,i=5,m=3F,y=05,l=&l.);%FDR(f=bf,i=5,m=3F,y=10,l=&l.);%FDR(f=bf,i=5,m=3F,y=15,l=&l.);%FDR(f=bf,i=5,m=3F,y=20,l=&l.);%FDR(f=bf,i=5,m=3F,y=25,l=&l.);
+%FDR(f=bf,i=5,m=1F,y=05,l=&l.);%FDR(f=bf,i=5,m=1F,y=10,l=&l.);%FDR(f=bf,i=5,m=1F,y=15,l=&l.);%FDR(f=bf,i=5,m=1F,y=20,l=&l.);%FDR(f=bf,i=5,m=1F,y=25,l=&l.);
+
+
+%FDR(f=af,i=5,m=5F,y=05,l=&l.);%FDR(f=af,i=5,m=5F,y=10,l=&l.);%FDR(f=af,i=5,m=5F,y=15,l=&l.);%FDR(f=af,i=5,m=5F,y=20,l=&l.);%FDR(f=af,i=5,m=5F,y=25,l=&l.);
+%FDR(f=af,i=5,m=4F,y=05,l=&l.);%FDR(f=af,i=5,m=4F,y=10,l=&l.);%FDR(f=af,i=5,m=4F,y=15,l=&l.);%FDR(f=af,i=5,m=4F,y=20,l=&l.);%FDR(f=af,i=5,m=4F,y=25,l=&l.);
+%FDR(f=af,i=5,m=3F,y=05,l=&l.);%FDR(f=af,i=5,m=3F,y=10,l=&l.);%FDR(f=af,i=5,m=3F,y=15,l=&l.);%FDR(f=af,i=5,m=3F,y=20,l=&l.);%FDR(f=af,i=5,m=3F,y=25,l=&l.);
+%FDR(f=af,i=5,m=1F,y=05,l=&l.);%FDR(f=af,i=5,m=1F,y=10,l=&l.);%FDR(f=af,i=5,m=1F,y=15,l=&l.);%FDR(f=af,i=5,m=1F,y=20,l=&l.);%FDR(f=af,i=5,m=1F,y=25,l=&l.);
+
+
+%end;
+%mend; 
+%lamloob(min=10,max=90);
+
+* run below macro [v] then run this lamloob [right above ^] back to merge;
+data G0_Results;
+set FDR.G0;
+run;
+data G0_Results;
+retain Group Return  Model Y;
+set G0_Results;
+run;
+
+* Macro to merge all results ;
+%macro FDR(f=bf,i=,m=5F,t=1.962,y=5,l=6);
+proc append base= G0_Results data= G&f.&i._&m._&y._0&l.;* force;
+run;
+/*proc delete data=G&f.&i._&m._&y._0&l.;
+run;*/
+%mend;
+
+proc export data=G0_results			
+            outfile="D:\Research\[MA] Test FDR\New result editing\G0_Results_48.csv"
+			dbms=csv replace;			
+     		putnames=yes;									
+run;
+
+* Select best gamma Y based on MSE ;
+proc sort data= G0_results out=G1_results;
+by Group Return Model  Y FDRn;  
+run;
+
+data G1_results;
+set G1_results;
+by Group  Return Model Y;
+/*if lambda < 0.3 then delete;
+if lambda > 0.8 then delete;*/
+if Pi0 < 0.48 then delete;
+if FDRn = '' then delete;   
+if first.Y;
+run;
+
+proc sort data=G1_results;
+by Group Return Model Y;
+run;
+
+
+proc export data=G1_results					
+            outfile="D:\Research\[MA] Test FDR\New result editing\G1_Results_48.csv"
+			dbms=csv replace;			
+     		putnames=yes;									
+run;
