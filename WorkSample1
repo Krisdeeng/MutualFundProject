@@ -1,0 +1,145 @@
+/*------------------------------------------------------------------------------
+
+                                 BOOTSTRAP METHOD                               
+                        Ver. X: Restricted residual resampling                        
+ 
+*-------------------------------------------------------------------------------*/
+*Create a time series of resampled residual data of iteration [k];
+%macro resampleX(k=0,f=BF,i=,m=5F);	
+*Create a random variable, i = Total number of observations;
+data Work.Zrandom (drop =iran); 					
+do iran=1 to 134797;								
+Rand=ranuni(iran);
+output;
+end;
+run;
+	
+*--------------------------------------- RESIDUAL -----------------------------------------------;
+proc surveyselect data=I&f.&i._&m._r out=X&f.&i._&m._res&k(keep=Fund res rename=(res=res2)) NOPRINT
+seed=0 
+method=urs samprate=1 outhits;
+strata Fund;
+run;
+*[Shuffle the residual time series];
+*Merge the random variable with resampled residual of iteration [k];
+data X&f.&i._&m._res&k;						
+merge X&f.&i._&m._res&k Work.Zrandom;
+run;
+*Sort the data by random variable to create (shuffle) random order of resampled res of iteration [k];
+proc sort data=X&f.&i._&m._res&k;				
+by Fund Rand;
+run;
+*Drop the random variable, change label of res of iteration [k];
+data X&f.&i._&m._res&k;						
+set X&f.&i._&m._res&k;
+if res2='' then delete;
+drop Rand;
+run;
+*--------------------------------------- DONE RESAMPLING -----------------------------------------------;
+
+*merge the parameters data with the resampled residuals for later regression;
+data X&f.&i._&m._&k;
+merge I&f.&i._&m X&f.&i._&m._res&k; 		
+by Fund;
+run;
+proc delete data = X&f.&i._&m._res&k;
+run;
+%mend;
+*%resampleX;	
+
+*[REGRESSION 2 MACRO - calculate return from resample, regress for new alphas];
+%macro regre2X(k=0,i=,f=BF,m=5F);
+*Calculate ARTIFICIAL RETURNS (art_ret) from iteration k;
+data X&f.&i._&m._&k;						
+set X&f.&i._&m._&k;
+art_ret = 0 + beta*Mkt_Rf_ca + s5*SMB5 + h*HML + r*RMW + c*CMA + res2;
+keep Fund Date exR_ca art_ret Mkt_Rf_ca SMB5 HML RMW CMA;
+run;
+
+*Regress the new ARTIFICIAL RETURNS to archive new alpha and t-apha;
+proc reg data=X&f.&i._&m._&k outest=X&f.&i._&m._&k._p tableout;
+by Fund;
+model art_ret = Mkt_Rf_ca HML SMB5 RMW CMA /acov r; 
+*output out=X&f.&i._&m._&k._r p=predict r=res stdr=stdr;
+ods output parameterestimates=X&f.&i._&m._&k._t;
+run;
+
+%mend;
+*%regre2X;
+
+*[MERGE RESAMPLE MACRO];
+%macro mergeresampleX(k=0,f=BF,i=,m=5F);
+*Keep new alpha...;
+data X&f.&i._&m._&k._p;
+set X&f.&i._&m._&k._p;
+by Fund;
+if first.Fund;
+keep Fund intercept;
+run;
+*...and t-values;
+data X&f.&i._&m._&k._t;
+set X&f.&i._&m._&k._t;
+by Fund;
+if first.Fund;
+keep Fund  HCtValue; *tValue
+run;
+*Put them together;
+data X&f.&i._&m._result&k.;
+merge X&f.&i._&m._&k._p X&f.&i._&m._&k._t;
+by Fund;
+run;
+proc delete data =  X&f.&i._&m._&k X&f.&i._&m._&k._p X&f.&i._&m._&k._t;
+run;
+%mend mergeresampleX;
+*%mergeresampleX;
+
+*Loop for [b] iterations;
+%macro loobX(b=30,f=BF,i=,m=5F);
+%local j;
+%do j = 1 %to &b;
+%resampleX(k=&j,f=&f,i=&i,m=&m); 
+%regre2X(k=&j,f=&f,i=&i,m=&m);
+%mergeresampleX(k=&j,f=&f,i=&i,m=&m);
+%end;
+dm 'log;clear;output;clear;';
+%mend loobX;
+*%loobX;
+
+%macro appendX(i=,f=BF,m=5F,b=30);
+%local j;
+%do j = 2 %to &b;
+proc append base=X&f.&i._&m._result1 data=X&f.&i._&m._result&j.;
+run;
+proc delete data = X&f.&i._&m._result&j.;
+run;
+%end;
+dm 'log;clear;output;clear;';
+%mend;
+*%appendX;											*I&f.&i._&m._result_Breg1k;
+
+*Rank all alpha results (run this first);
+%macro rankX(f=bf,i=,m=5F);
+proc sort data=X&f.&i._&m._result1;
+by fund;
+run;
+
+data C_X&f.&i._&m.;
+merge 
+	I&f.&i._&m._p(keep= fund alpha rename=(alpha=Oalpha)) 
+	I&f.&i._&m._t(keep= fund hctvalue rename=(hctvalue=Ohctvalue)) 
+	X&f.&i._&m._result1;
+by Fund;
+label oalpha=ori.alpha;
+label otvalue=ori.tvalue;
+label ohctvalue=ori.NWt-value;
+run;
+proc delete data = X&f.&i._&m._result1;
+run;
+*rank the funds - 0=largest percentile, 99=lowest percentile;
+proc rank data=C_X&f.&i._&m. out=C_X&f.&i._&m. ties=low descending groups=100; *out=C_X&f.&i._&m. ;
+   var oalpha ohctvalue intercept HCTValue;
+   ranks OARank OTRank ARank TRank;
+run;
+%mend rankX;
+*%rankX(i=,f=BF,m=5F);
+
