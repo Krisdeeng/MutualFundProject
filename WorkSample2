@@ -1,0 +1,331 @@
+/*------------------------------------------------------------------------------
+
+                            FALSE DISCOVERY RATE METHOD 
+
+						     Part 1: Bootstrap P-values
+ 
+*-------------------------------------------------------------------------------*/
+
+*Run D5.3, D7;                             
+ 
+*       <<<    Calculating P-value from t-stat for each fund     >>>        ;
+*    						using boostrap method						    ;
+
+*[RESAMPLE MACRO BEGINS HERE];
+*Create a time series of resampled residual data of iteration [k];
+%macro resampleP(b=10,f=BF,i=,m=5F,r=987);	
+%local k;
+%do k = 1 %to &b;
+proc surveyselect data=I&f.&i._&m._t out=Pt&f.&i._&m._&k(keep=hctvalue) NOPRINT
+seed=0 
+method=urs samprate=1 outhits;
+run;
+
+*[Shuffle the residual time series];
+*Create a random variable, i = Total number of observations;
+data Zrandom (drop =iran); 					
+do iran=1 to &r.;	*139,182 804 752 144 392 232 54 165;							
+Rand=ranuni(iran);
+output;end;run;
+*Merge the random variable with resampled residual of iteration [k];
+data Pt&f.&i._&m._&k;						
+merge Pt&f.&i._&m._&k Zrandom;
+if HCTvalue = '' then delete;
+run;
+*Sort the data by random variable to create (shuffle) random order of resampled res of iteration [k];
+proc sort data=Pt&f.&i._&m._&k;				
+by Rand;
+run;
+*Drop the random variable, change label of res of iteration [k];
+data Pt&f.&i._&m._&k;
+set Pt&f.&i._&m._&k; 		
+drop rand;
+rename hctvalue=hct2;
+run;
+data Pt&f.&i._&m._&k;
+merge I&f.&i._&m._t Pt&f.&i._&m._&k;
+run;
+
+*Estimate the P-VALUE for bootstrap iteration #&b;
+data Pt&f.&i._&m._&k;
+set Pt&f.&i._&m._&k;
+do;
+if hct2 >= hctvalue then tpos = 1; else tpos = 0;	
+if hct2 < hctvalue then tneg = 1; else tneg = 0;
+end;
+keep fund tpos tneg;
+run;
+%end;
+
+%local g;
+%do g = 1 %to &b;
+proc surveyselect data=I&f.&i._&m._p out=Pa&f.&i._&m._&g(keep=alpha) NOPRINT
+seed=0 
+method=urs samprate=1 outhits;
+run;
+*[Shuffle the residual time series];
+*Create a random variable, i = Total number of observations;
+data Zrandom2 (drop =iran); 					
+do iran=1 to &r.;	*139,182 804 752 144 392 232 54 165;							
+Rand=ranuni(iran);
+output;end;run;
+*Merge the random variable with resampled residual of iteration [k];
+data Pa&f.&i._&m._&g;						
+merge Pa&f.&i._&m._&g Zrandom2;
+if Alpha = '' then delete;
+run;
+*Sort the data by random variable to create (shuffle) random order of resampled res of iteration [k];
+proc sort data=Pa&f.&i._&m._&g;				
+by Rand;
+run;
+*Drop the random variable, change label of res of iteration [k];
+data Pa&f.&i._&m._&g;
+set Pa&f.&i._&m._&g; 		
+drop rand;
+rename alpha=alpha2;
+run;
+data Pa&f.&i._&m._&g;
+merge I&f.&i._&m._p Pa&f.&i._&m._&g;
+run;
+*Estimate the P-VALUE for bootstrap iteration #&b;
+data Pa&f.&i._&m._&g;
+set Pa&f.&i._&m._&g;
+do;
+if alpha2 >= alpha then apos = 1; else apos = 0;	
+if alpha2 < alpha then aneg = 1; else aneg = 0;
+end;
+keep fund apos aneg;
+run;
+%end;
+
+%local h;
+%do h = 2 %to &b;
+*Merge the results together: 987 rows of funds, #&b columns of Indicator;
+proc append 
+base=Pt&f.&i._&m._1 
+data=Pt&f.&i._&m._&h;
+quit;
+proc delete data = Pt&f.&i._&m._&h;
+run;
+%end;
+proc sort data=Pt&f.&i._&m._1;
+by fund;
+run;
+
+%local h;
+%do h = 2 %to &b;
+*Merge the results together: 987 rows of funds, #&b columns of Indicator;
+proc append 
+base=Pa&f.&i._&m._1 
+data=Pa&f.&i._&m._&h;
+quit;
+proc delete data = Pa&f.&i._&m._&h;
+run;
+%end;
+proc sort data=Pa&f.&i._&m._1;
+by fund;
+run;
+
+data P&f.&i._&m._1;
+merge Pa&f.&i._&m._1 Pt&f.&i._&m._1;
+run;
+
+*proc delete data = Pa&f.&i._&m._&h;
+*run;
+data Pa&f.&i._&m._1;
+set Pa&f.&i._&m._1;
+if Fund = '' then delete;
+run;
+
+data Pt&f.&i._&m._1;
+set Pt&f.&i._&m._1;
+if Fund = '' then delete;
+run;
+
+%mend resampleP;
+*%resampleP(b=10,f=bf,i=,m=5F);
+
+
+
+*%resampleP;
+*%resampleP(b=100,f=bf,i=,m=5F);
+
+
+*                 END BOOTSTRAP FOR P-VALUE                  ;
+%macro ODSOn();
+ods graphics on;
+ods exclude none;
+ods results;
+%mend;
+%ODSon;
+options notes source source2 errors=20;
+*reset log output;
+proc printto;
+run;
+
+%macro ODSOff();
+ods graphics off;
+ods exclude all;
+ods noresults;
+%mend;
+%ODSoff;
+options nonotes nosource nosource2 errors=0;
+filename myfile 'D:\SAS\mylog.log';
+proc printto log=myfile;
+run;
+
+*(old 804 752) 987 665 683 144 392 232 54 165;
+
+%resampleP(b=1000,f=bf,i=1,r=144,m=5F);
+%resampleP(b=1000,f=af,i=1,r=144,m=5F);
+%resampleP(b=1000,f=bf,i=1,r=144,m=4F);
+%resampleP(b=1000,f=af,i=1,r=144,m=4F);
+%resampleP(b=1000,f=bf,i=1,r=144,m=3F);
+%resampleP(b=1000,f=af,i=1,r=144,m=3F);
+%resampleP(b=1000,f=bf,i=1,r=144,m=1F);
+%resampleP(b=1000,f=af,i=1,r=144,m=1F);
+
+%resampleP(b=1000,f=bf,i=2,r=392,m=5F);
+%resampleP(b=1000,f=af,i=2,r=392,m=5F);
+%resampleP(b=1000,f=bf,i=2,r=392,m=4F);
+%resampleP(b=1000,f=af,i=2,r=392,m=4F);
+%resampleP(b=1000,f=bf,i=2,r=392,m=3F);
+%resampleP(b=1000,f=af,i=2,r=392,m=3F);
+%resampleP(b=1000,f=bf,i=2,r=392,m=1F);
+%resampleP(b=1000,f=af,i=2,r=392,m=1F);
+
+%resampleP(b=1000,f=bf,i=3,r=232,m=5F);
+%resampleP(b=1000,f=af,i=3,r=232,m=5F);
+%resampleP(b=1000,f=bf,i=3,r=232,m=4F);
+%resampleP(b=1000,f=af,i=3,r=232,m=4F);
+%resampleP(b=1000,f=bf,i=3,r=232,m=3F);
+%resampleP(b=1000,f=af,i=3,r=232,m=3F);
+%resampleP(b=1000,f=bf,i=3,r=232,m=1F);
+%resampleP(b=1000,f=af,i=3,r=232,m=1F);
+
+%resampleP(b=1000,f=bf,i=4,r=54,m=5F);
+%resampleP(b=1000,f=af,i=4,r=54,m=5F);
+%resampleP(b=1000,f=bf,i=4,r=54,m=4F);
+%resampleP(b=1000,f=af,i=4,r=54,m=4F);
+%resampleP(b=1000,f=bf,i=4,r=54,m=3F);
+%resampleP(b=1000,f=af,i=4,r=54,m=3F);
+%resampleP(b=1000,f=bf,i=4,r=54,m=1F);
+%resampleP(b=1000,f=af,i=4,r=54,m=1F);
+
+%resampleP(b=1000,f=bf,i=5,r=165,m=5F);
+%resampleP(b=1000,f=af,i=5,r=165,m=5F);
+%resampleP(b=1000,f=bf,i=5,r=165,m=4F);
+%resampleP(b=1000,f=af,i=5,r=165,m=4F);
+%resampleP(b=1000,f=bf,i=5,r=165,m=3F);
+%resampleP(b=1000,f=af,i=5,r=165,m=3F);
+%resampleP(b=1000,f=bf,i=5,r=165,m=1F);
+%resampleP(b=1000,f=af,i=5,r=165,m=1F);
+
+
+
+
+%resampleP(b=1000,f=bf,i=,m=5F,r=987);
+%resampleP(b=1000,f=af,i=,m=5F,r=987);
+%resampleP(b=1000,f=bf,i=,m=4F,r=987);
+%resampleP(b=1000,f=af,i=,m=4F,r=987);
+%resampleP(b=1000,f=bf,i=,m=3F,r=987);
+%resampleP(b=1000,f=af,i=,m=3F,r=987);
+%resampleP(b=1000,f=bf,i=,m=1F,r=987);
+%resampleP(b=1000,f=af,i=,m=1F,r=987);
+
+%resampleP(b=1000,f=bf,i=8,m=5F,r=665);
+%resampleP(b=1000,f=af,i=8,m=5F,r=665);
+%resampleP(b=1000,f=bf,i=8,m=4F,r=665);
+%resampleP(b=1000,f=af,i=8,m=4F,r=665);
+%resampleP(b=1000,f=bf,i=8,m=3F,r=665);
+%resampleP(b=1000,f=af,i=8,m=3F,r=665);
+%resampleP(b=1000,f=bf,i=8,m=1F,r=665);
+%resampleP(b=1000,f=af,i=8,m=1F,r=665);
+
+%resampleP(b=1000,f=bf,i=9,m=5F,r=683);
+%resampleP(b=1000,f=af,i=9,m=5F,r=683);
+%resampleP(b=1000,f=bf,i=9,m=4F,r=683);
+%resampleP(b=1000,f=af,i=9,m=4F,r=683);
+%resampleP(b=1000,f=bf,i=9,m=3F,r=683);
+%resampleP(b=1000,f=af,i=9,m=3F,r=683);
+%resampleP(b=1000,f=bf,i=9,m=1F,r=683);
+%resampleP(b=1000,f=af,i=9,m=1F,r=683);
+
+/*
+data Kris.Pbf_5f_1;
+set Pbf_5f_1;
+run;*/
+
+
+
+
+
+/*
+%macro deleteP(a=a,f=bf,i=,m=5F);
+data P&a.&f.&i._&m._1;
+set P&a.&f.&i._&m._1;
+if Fund = '' then delete;
+run;
+%mend;
+%deleteP(a=a,f=bf,i=1,m=5F);
+%deleteP(a=a,f=bf,i=2,m=5F);
+%deleteP(a=a,f=bf,i=3,m=5F);
+%deleteP(a=a,f=bf,i=4,m=5F);
+%deleteP(a=a,f=bf,i=5,m=5F);
+%deleteP(a=a,f=bf,i=8,m=5F);
+%deleteP(a=a,f=bf,i=9,m=5F);
+%deleteP(a=t,f=bf,i=1,m=5F);
+%deleteP(a=t,f=bf,i=2,m=5F);
+%deleteP(a=t,f=bf,i=3,m=5F);
+%deleteP(a=t,f=bf,i=4,m=5F);
+%deleteP(a=t,f=bf,i=5,m=5F);
+%deleteP(a=t,f=bf,i=8,m=5F);
+%deleteP(a=t,f=bf,i=9,m=5F);
+
+%deleteP(a=a,f=af,i=1,m=5F);
+%deleteP(a=a,f=af,i=2,m=5F);
+%deleteP(a=a,f=af,i=3,m=5F);
+%deleteP(a=a,f=af,i=4,m=5F);
+%deleteP(a=a,f=af,i=5,m=5F);
+%deleteP(a=a,f=af,i=8,m=5F);
+%deleteP(a=a,f=af,i=9,m=5F);
+%deleteP(a=t,f=af,i=1,m=5F);
+%deleteP(a=t,f=af,i=2,m=5F);
+%deleteP(a=t,f=af,i=3,m=5F);
+%deleteP(a=t,f=af,i=4,m=5F);
+%deleteP(a=t,f=af,i=5,m=5F);
+%deleteP(a=t,f=af,i=8,m=5F);
+%deleteP(a=t,f=af,i=9,m=5F);
+
+%deleteP(a=a,f=bf,i=1,m=4F);
+%deleteP(a=a,f=bf,i=2,m=4F);
+%deleteP(a=a,f=bf,i=3,m=4F);
+%deleteP(a=a,f=bf,i=4,m=4F);
+%deleteP(a=a,f=bf,i=5,m=4F);
+%deleteP(a=a,f=bf,i=8,m=4F);
+%deleteP(a=a,f=bf,i=9,m=4F);
+%deleteP(a=t,f=bf,i=1,m=4F);
+%deleteP(a=t,f=bf,i=2,m=4F);
+%deleteP(a=t,f=bf,i=3,m=4F);
+%deleteP(a=t,f=bf,i=4,m=4F);
+%deleteP(a=t,f=bf,i=5,m=4F);
+%deleteP(a=t,f=bf,i=8,m=4F);
+%deleteP(a=t,f=bf,i=9,m=4F);
+
+%deleteP(a=a,f=af,i=1,m=4F);
+%deleteP(a=a,f=af,i=2,m=4F);
+%deleteP(a=a,f=af,i=3,m=4F);
+%deleteP(a=a,f=af,i=4,m=4F);
+%deleteP(a=a,f=af,i=5,m=4F);
+%deleteP(a=a,f=af,i=8,m=4F);
+%deleteP(a=a,f=af,i=9,m=4F);
+%deleteP(a=t,f=af,i=1,m=4F);
+%deleteP(a=t,f=af,i=2,m=4F);
+%deleteP(a=t,f=af,i=3,m=4F);
+%deleteP(a=t,f=af,i=4,m=4F);
+%deleteP(a=t,f=af,i=5,m=4F);
+%deleteP(a=t,f=af,i=8,m=4F);
+%deleteP(a=t,f=af,i=9,m=4F);
+
+
+*/
