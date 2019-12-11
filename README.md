@@ -20,4 +20,4 @@ If you have any questions or request of my collaboration, please feel free to co
 
 
 
-<img scr=https://imgbb.com/][img]https://i.ibb.co/B6HVd8z/Muffin-Goat-logo1.png>
+<img scr=https://i.ibb.co/B6HVd8z/Muffin-Goat-logo1.png>
