@@ -1,6 +1,5 @@
 
 # Welcome to the WorkSample folder of Kris Tran (Nhan Tran). 
-### **Mutual Fund Performance Analysis**
 
 ## Introduction:
 Kris' own development of _**SAS, SQL and Macros**_ programming in the research of Canadian mutual fund performance (1000+ funds, 1991-2016).
